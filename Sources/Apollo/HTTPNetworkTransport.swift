@@ -142,7 +142,17 @@ public class HTTPNetworkTransport: NetworkTransport {
           switch errorMsg {
             case "PersistedQueryNotFound", "PersistedQueryNotSupported":
               
-              let request = self.httpGetRequest(operation: operation, requestHeaders: headers, sendQueryDocument: true, autoPersistQueries: true)
+              let request = { () -> URLRequest in
+                guard operation.operationType == .query else {
+                  return self.httpPostRequest(operation: operation, requestHeaders: headers, sendQueryDocument: true, autoPersistQueries: false)
+                }
+                
+                if self._useHttpGetMethodForPersistedQueries {
+                  return self.httpGetRequest(operation: operation, requestHeaders: headers, sendQueryDocument: true, autoPersistQueries: true)
+                } else {
+                  return self.httpPostRequest(operation: operation, requestHeaders: headers, sendQueryDocument: true, autoPersistQueries: true)
+                }
+              }()
               
               let newSession = URLSession(configuration: self.session.configuration)
               let (data2, response2, error2) = newSession.synchronousDataTask(with: request)

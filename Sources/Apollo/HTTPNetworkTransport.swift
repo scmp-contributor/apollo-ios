@@ -147,11 +147,7 @@ public class HTTPNetworkTransport: NetworkTransport {
                   return self.httpPostRequest(operation: operation, requestHeaders: headers, sendQueryDocument: true, autoPersistQueries: false)
                 }
                 
-                if self._useHttpGetMethodForPersistedQueries {
-                  return self.httpGetRequest(operation: operation, requestHeaders: headers, sendQueryDocument: true, autoPersistQueries: true)
-                } else {
-                  return self.httpPostRequest(operation: operation, requestHeaders: headers, sendQueryDocument: true, autoPersistQueries: true)
-                }
+                return self.httpPostRequest(operation: operation, requestHeaders: headers, sendQueryDocument: true, autoPersistQueries: true)
               }()
               
               let newSession = URLSession(configuration: self.session.configuration)
@@ -162,7 +158,7 @@ public class HTTPNetworkTransport: NetworkTransport {
               }
               
               guard let httpResponse = response2 as? HTTPURLResponse else {
-                fatalError("Response should be an HTTPURLResponse")
+                fatalError("Response should be an HTTPURLResponse \(String(data:request.httpBody, encoding: .utf8))")
               }
               
               if (!httpResponse.isSuccessful) {

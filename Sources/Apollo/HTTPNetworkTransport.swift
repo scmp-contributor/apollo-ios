@@ -158,7 +158,7 @@ public class HTTPNetworkTransport: NetworkTransport {
               }
               
               guard let httpResponse = response2 as? HTTPURLResponse else {
-                fatalError("Response should be an HTTPURLResponse \(String(data:request.httpBody, encoding: .utf8))")
+                fatalError("Response should be an HTTPURLResponse \(String(data:request.httpBody!, encoding: .utf8))")
               }
               
               if (!httpResponse.isSuccessful) {

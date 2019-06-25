@@ -248,7 +248,9 @@ public class HTTPNetworkTransport: NetworkTransport {
     }
     
     if sendQueryDocument {
-      payload["query"] = operation.queryDocument
+      
+      let modifiedQuery = operation.queryDocument.replacingOccurrences(of: "fragment", with: "\nfragment")
+      payload["query"] = modifiedQuery
     }
     
     return payload

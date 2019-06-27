@@ -49,18 +49,6 @@ public struct GraphQLHTTPResponseError: Error, LocalizedError {
 
 /// A network transport that uses HTTP POST requests to send GraphQL operations to a server, and that uses `URLSession` as the networking implementation.
 public class HTTPNetworkTransport: NetworkTransport {
-  
-  private final let HEADER_ACCEPT_TYPE = "Accept"
-  private final let HEADER_CONTENT_TYPE = "Content-Type"
-  private final let HEADER_APOLLO_OPERATION_ID = "X-APOLLO-OPERATION-ID"
-  private final let HEADER_APOLLO_OPERATION_NAME = "X-APOLLO-OPERATION-NAME"
-  private final let ACCEPT_TYPE = "application/json"
-  private final let CONTENT_TYPE = "application/json"
-  
-  private struct APQProtocol {
-    static let PersistedQueryNotFound = "PersistedQueryNotFound"
-    static let PersistedQueryNotSupported = "PersistedQueryNotSupported"
-  }
 
   let url: URL
   var session: URLSession
@@ -98,19 +86,20 @@ public class HTTPNetworkTransport: NetworkTransport {
     let headers = decorateRequestHeaders(for: operation)
     
     let request = { () -> URLRequest in
-      guard operation.operationType == .query else {
+      guard operation.operationType == .query, _enableAutoPersistedQueries else {
+        // not support APQs
         return httpPostRequest(operation: operation, requestHeaders: headers, sendQueryDocument: true, autoPersistQueries: false)
       }
-      
-      if _enableAutoPersistedQueries && _useHttpGetMethodForPersistedQueries {
-        return httpGetRequest(operation: operation, requestHeaders: headers, sendQueryDocument: false, autoPersistQueries: _enableAutoPersistedQueries)
+     
+      // support APQs
+      if _useHttpGetMethodForPersistedQueries {
+        return httpGetRequest(operation: operation, requestHeaders: headers, sendQueryDocument: false, autoPersistQueries: true)
       } else {
-        return httpPostRequest(operation: operation, requestHeaders: headers, sendQueryDocument: !_enableAutoPersistedQueries, autoPersistQueries: _enableAutoPersistedQueries)
+        return httpPostRequest(operation: operation, requestHeaders: headers, sendQueryDocument: false, autoPersistQueries: true)
       }
     }()
     
     let task = session.dataTask(with: request) { [weak self] (data: Data?, response: URLResponse?, error: Error?) in
-      
       guard let self = self else { return }
       
       if error != nil {
@@ -143,7 +132,7 @@ public class HTTPNetworkTransport: NetworkTransport {
             case "PersistedQueryNotFound", "PersistedQueryNotSupported":
               
               let request = { () -> URLRequest in
-                guard operation.operationType == .query else {
+                guard operation.operationType == .query, self._enableAutoPersistedQueries else {
                   return self.httpPostRequest(operation: operation, requestHeaders: headers, sendQueryDocument: true, autoPersistQueries: false)
                 }
                 
@@ -158,7 +147,7 @@ public class HTTPNetworkTransport: NetworkTransport {
               }
               
               guard let httpResponse = response2 as? HTTPURLResponse else {
-                fatalError("Response should be an HTTPURLResponse \(String(data:request.httpBody!, encoding: .utf8))")
+                fatalError("Response should be an HTTPURLResponse")
               }
               
               if (!httpResponse.isSuccessful) {
@@ -169,7 +158,6 @@ public class HTTPNetworkTransport: NetworkTransport {
                 completionHandler(nil, GraphQLHTTPResponseError(body: nil, response: httpResponse, kind: .invalidResponse))
                 return
               }
-              let string = String(bytes: data, encoding: .utf8)
               guard let body =  try self.serializationFormat.deserialize(data: data) as? JSONObject else {
                 throw GraphQLHTTPResponseError(body: data, response: httpResponse, kind: .invalidResponse)
             }
@@ -193,8 +181,6 @@ public class HTTPNetworkTransport: NetworkTransport {
   }
   
   // MARKL: Helper
-  
-  
   private func httpPostRequest<Operation: GraphQLOperation>(operation: Operation,
                                                             requestHeaders: [String: String?],
                                                             sendQueryDocument: Bool,
@@ -285,9 +271,9 @@ public class HTTPNetworkTransport: NetworkTransport {
   }
   
   private func decorateRequestHeaders<Operation: GraphQLOperation>(for operation: Operation) -> [String: String?] {
-    return [HEADER_ACCEPT_TYPE: ACCEPT_TYPE,
-            HEADER_CONTENT_TYPE: CONTENT_TYPE,
-            HEADER_APOLLO_OPERATION_ID: operation.operationIdentifier
+    return ["Accept": "application/json",
+            "Content-Type": "application/json",
+            "X-APOLLO-OPERATION-ID": operation.operationIdentifier
     ]
   }
 }

@@ -236,7 +236,7 @@ public class HTTPNetworkTransport: NetworkTransport {
     }
     
     if sendQueryDocument {
-      
+      // TODO: This work-around fix "operationId is invalid for swift codegen" (https://github.com/apollographql/apollo-tooling/issues/1362), please remove this work-around after it's fixed.
       let modifiedQuery = operation.queryDocument.replacingOccurrences(of: "fragment", with: "\nfragment")
       payload["query"] = modifiedQuery
     }

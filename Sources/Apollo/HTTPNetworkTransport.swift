@@ -62,7 +62,8 @@ public class HTTPNetworkTransport: NetworkTransport {
   /// - Parameters:
   ///   - url: The URL of a GraphQL server to connect to.
   ///   - configuration: A session configuration used to configure the session. Defaults to `URLSessionConfiguration.default`.
-  ///   - enableAutoPersistedQueries: Whether to send operation identifiers rather than full operation text, for use with servers that support query persistence. Defaults to false.
+  ///   - enableAutoPersistedQueries: Whether to send persistedQuery extension. QueryDocument will be absent at 1st request, retry with QueryDocument if server respond PersistedQueryNotFound or PersistedQueryNotSupport. Defaults to false.
+  ///   - useHttpGetMethodForPersistedQueries: Whether to send PersistedQuery supported request with HTTPGETMethod, retry with HTTPPOSTMethod if PersistedQuery not support/not found in server.
   public init(url: URL, configuration: URLSessionConfiguration = URLSessionConfiguration.default,
               enableAutoPersistedQueries: Bool = false,
               useHttpGetMethodForPersistedQueries: Bool = false
@@ -99,44 +100,12 @@ public class HTTPNetworkTransport: NetworkTransport {
       }
     }()
     
-    let task = session.dataTask(with: request) { [weak self] (data: Data?, httpResponse: URLResponse?, error: Error?) in
+    let task = session.dataTask(with: request) { [weak self] (data: Data?, httpResponse: URLResponse?, httpError: Error?) in
       guard let self = self else { return }
       
-      // reusble closure, return Body JSON, otherwise throw errors and exec completionHandler
-      let handleHttpResult = { (data: Data?, httpResponse: URLResponse?, error: Error?) -> JSONObject? in
-        
-        if error != nil {
-          completionHandler(nil, error)
-          return nil
-        }
-        
-        guard let httpResponse = httpResponse as? HTTPURLResponse else {
-          fatalError("Response should be an HTTPURLResponse")
-        }
-        
-        if (!httpResponse.isSuccessful) {
-          completionHandler(nil, GraphQLHTTPResponseError(body: data, response: httpResponse, kind: .errorResponse))
-          return nil
-        }
-        
-        guard let data = data else {
-          completionHandler(nil, GraphQLHTTPResponseError(body: nil, response: httpResponse, kind: .invalidResponse))
-          return nil
-        }
-        
-        do {
-          guard let body =  try self.serializationFormat.deserialize(data: data) as? JSONObject else {
-            throw GraphQLHTTPResponseError(body: data, response: httpResponse, kind: .invalidResponse)
-          }
-          
-          return body
-        } catch {
-          completionHandler(nil, error)
-          return nil
-        }
-      }
-      
-      guard let body = handleHttpResult(data, httpResponse, error) else {
+      let result = self.handleResponse(data, httpResponse, httpError)
+      guard let body = result.0 else {
+        completionHandler(nil, result.1)
         return
       }
       
@@ -160,7 +129,9 @@ public class HTTPNetworkTransport: NetworkTransport {
           let newSession = URLSession(configuration: self.session.configuration)
           let (dataRetry, responseRetry, errorRetry) = newSession.synchronousDataTask(with: requestRetry)
           
-          guard let bodyRetry = handleHttpResult(dataRetry, responseRetry, errorRetry) else {
+          let result = self.handleResponse(dataRetry, responseRetry, errorRetry)
+          guard let bodyRetry = result.0 else {
+            completionHandler(nil, result.1)
             return
           }
           
@@ -183,6 +154,35 @@ public class HTTPNetworkTransport: NetworkTransport {
   }
   
   // MARKL: Helper
+  private func handleResponse(_ data: Data?,_ httpResponse: URLResponse?,_ error: Error?) -> (JSONObject?, Error?) {
+    
+    if error != nil {
+      return (nil, error)
+    }
+    
+    guard let httpResponse = httpResponse as? HTTPURLResponse else {
+      fatalError("Response should be an HTTPURLResponse")
+    }
+    
+    if (!httpResponse.isSuccessful) {
+      return (nil, GraphQLHTTPResponseError(body: data, response: httpResponse, kind: .errorResponse))
+    }
+    
+    guard let data = data else {
+      return (nil, GraphQLHTTPResponseError(body: nil, response: httpResponse, kind: .invalidResponse))
+    }
+    
+    do {
+      guard let body =  try self.serializationFormat.deserialize(data: data) as? JSONObject else {
+        throw GraphQLHTTPResponseError(body: data, response: httpResponse, kind: .invalidResponse)
+      }
+      return (body, nil)
+      
+    } catch {
+      return (nil, error)
+    }
+  }
+  
   private func httpPostRequest<Operation: GraphQLOperation>(operation: Operation,
                                                             requestHeaders: [String: String?],
                                                             sendQueryDocument: Bool,

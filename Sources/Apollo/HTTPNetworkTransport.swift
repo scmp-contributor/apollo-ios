@@ -273,8 +273,7 @@ public class HTTPNetworkTransport: NetworkTransport {
   }
   
   private func decorateRequestHeaders<Operation: GraphQLOperation>(for operation: Operation) -> [String: String?] {
-    return ["Accept": "application/json",
-            "Content-Type": "application/json",
+    return ["Content-Type": "application/json",
             "X-APOLLO-OPERATION-ID": operation.operationIdentifier
     ]
   }
